@@ -31,3 +31,4 @@ cargo run -p ao-tui         # run the TUI
 - Tmux sessions: `ao-{slot_name}`
 - Log files: `.aspire-orchestrator-aspire.log` and `.aspire-orchestrator-agent.log` in clone dir
 - Error handling: `thiserror` in ao-core, `color-eyre` in ao-tui
+- Binary imports from library: `main.rs` uses `use ao_tui::` (not `mod` re-declarations) to avoid double compilation

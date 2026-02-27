@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod agent_host;
 pub mod aspire;
 pub mod blueprint;
 pub mod config_loader;
@@ -9,4 +10,3 @@ pub mod ports;
 pub mod repo_finder;
 pub mod slot_manager;
 pub mod state;
-pub mod tmux;

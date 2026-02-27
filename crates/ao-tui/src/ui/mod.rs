@@ -12,6 +12,7 @@ pub mod multiplex_filter_bar;
 pub mod multiplex_log;
 pub mod slot_table;
 pub mod status_bar;
+pub mod terminal_view;
 
 use chrono::{DateTime, Utc};
 use ratatui::Frame;
@@ -29,6 +30,9 @@ pub fn render(f: &mut Frame, app: &App, now: Option<DateTime<Utc>>) {
 
     // Main content area depends on mode and view
     match app.mode {
+        Mode::Terminal => {
+            terminal_view::render(f, chunks[1], app);
+        }
         Mode::MultiplexLog => {
             multiplex_log::render(f, chunks[1], app);
         }
@@ -41,7 +45,18 @@ pub fn render(f: &mut Frame, app: &App, now: Option<DateTime<Utc>>) {
                 slot_table::render(f, content_chunks[0], app);
                 let right_chunks = layout::right_panel_layout(content_chunks[1]);
                 detail_panel::render_with_now(f, right_chunks[0], app, now);
-                log_view::render(f, right_chunks[1], app);
+
+                // Show terminal view if slot has an active agent with terminal data
+                let has_terminal = app
+                    .selected_slot()
+                    .map(|s| app.terminal_parsers.contains_key(&s.name))
+                    .unwrap_or(false);
+
+                if has_terminal {
+                    terminal_view::render_embedded(f, right_chunks[1], app);
+                } else {
+                    log_view::render(f, right_chunks[1], app);
+                }
             }
         },
     }
@@ -59,6 +74,6 @@ pub fn render(f: &mut Frame, app: &App, now: Option<DateTime<Utc>>) {
         Mode::BlueprintListDialog => dialog_blueprint::render_list(f, app),
         Mode::BlueprintSaveDialog => dialog_blueprint::render_save(f, app),
         Mode::BatchProgress => dialog_batch_progress::render(f, app),
-        Mode::SlotList | Mode::MultiplexLog => {}
+        Mode::SlotList | Mode::MultiplexLog | Mode::Terminal => {}
     }
 }

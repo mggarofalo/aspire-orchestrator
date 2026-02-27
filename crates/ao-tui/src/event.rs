@@ -31,6 +31,8 @@ pub enum AppEvent {
         failure: Option<(String, String)>,
         done: bool,
     },
+    /// Terminal output bytes from an agent host connection.
+    TerminalOutput { slot_name: String, bytes: Vec<u8> },
 }
 
 /// Spawn the crossterm input polling task.

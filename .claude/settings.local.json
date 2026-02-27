@@ -34,7 +34,14 @@
       "Write",
       "Edit",
       "Glob",
-      "Grep"
+      "Grep",
+      "Bash(cargo insta accept:*)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:crates.io)",
+      "WebSearch",
+      "Bash(cargo info:*)",
+      "Bash(cargo search:*)",
+      "Bash(cargo insta test:*)"
     ],
     "deny": []
   }

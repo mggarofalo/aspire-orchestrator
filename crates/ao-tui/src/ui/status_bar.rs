@@ -21,6 +21,10 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
     // Second line: context-sensitive hotkey hints
     let hints = match (&app.mode, &app.view) {
+        (Mode::Terminal, _) => Line::from(vec![
+            hint("Esc", "back"),
+            Span::raw("  All other keys forwarded to agent terminal"),
+        ]),
         (Mode::MultiplexLog, _) => Line::from(vec![
             hint("1-6", "toggle"),
             Span::raw(" "),
@@ -66,7 +70,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             Span::raw(" "),
             hint("G", "push"),
             Span::raw(" "),
-            hint("P", "op-in"),
+            hint("P", "term"),
             Span::raw(" "),
             hint("L", "og"),
             Span::raw(" "),

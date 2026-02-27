@@ -23,7 +23,7 @@ pub fn render(f: &mut Frame) {
         key_line("A", "Spawn agent"),
         key_line("R", "Rebase branch"),
         key_line("G", "Git push"),
-        key_line("P", "Pop-in to tmux session"),
+        key_line("P", "Open terminal for agent"),
         key_line("L", "Toggle log source"),
         key_line("M", "Open multiplexed log"),
         key_line("B", "Open blueprints"),

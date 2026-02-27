@@ -11,9 +11,9 @@ use ratatui::Terminal;
 use tokio::sync::mpsc;
 
 use ao_core::models::RepoCandidate;
+use ao_core::services::agent_host;
 use ao_core::services::log_tailer::LogLine;
 use ao_core::services::slot_manager::SlotManager;
-use ao_core::services::tmux;
 
 use ao_tui::app::{App, CreateSlotField, Mode};
 use ao_tui::event::{spawn_input_task, spawn_tick_task, AppEvent};
@@ -32,6 +32,11 @@ async fn main() -> color_eyre::Result<()> {
         .and_then(|i| args.get(i + 1))
         .map(PathBuf::from);
 
+    // Check for --host-agent mode
+    if args.iter().any(|a| a == "--host-agent") {
+        return run_host_agent(&args).await;
+    }
+
     // Set up debug logging if requested
     let _guard = if debug || headless_script.is_some() {
         Some(setup_debug_logging())
@@ -44,6 +49,30 @@ async fn main() -> color_eyre::Result<()> {
     } else {
         run_interactive().await
     }
+}
+
+/// Run in agent host mode: create a PTY and serve it over TCP.
+async fn run_host_agent(args: &[String]) -> color_eyre::Result<()> {
+    let get_arg = |flag: &str| -> Option<String> {
+        args.iter()
+            .position(|a| a == flag)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
+
+    let slot_name = get_arg("--slot").unwrap_or_else(|| "unknown".into());
+    let workdir = get_arg("--workdir").unwrap_or_else(|| ".".into());
+    let log_file = get_arg("--log-file").unwrap_or_else(|| "/dev/null".into());
+    let slots_dir = get_arg("--slots-dir").unwrap_or_else(|| ".slots".into());
+
+    // Everything after `--` is the command to run
+    let command: Vec<String> = if let Some(pos) = args.iter().position(|a| a == "--") {
+        args[pos + 1..].to_vec()
+    } else {
+        vec!["bash".into()]
+    };
+
+    ao_tui::host::run_host(&slot_name, &command, &workdir, &log_file, &slots_dir).await
 }
 
 /// Configure file-based tracing to `.aspire-orchestrator-debug.log` in CWD.
@@ -86,6 +115,9 @@ async fn run_interactive() -> color_eyre::Result<()> {
         }
     });
 
+    // Connect to any already-running agent hosts and start streaming
+    connect_running_agents(&slot_manager, &event_tx).await;
+
     // Initialize terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -99,12 +131,6 @@ async fn run_interactive() -> color_eyre::Result<()> {
     // Main event loop
     loop {
         terminal.draw(|f| ui::render(f, &app, None))?;
-
-        if let Some(session) = app.pop_in_target.take() {
-            pop_in(&mut terminal, &session).await;
-            app.slots = slot_manager.get_slots().await;
-            continue;
-        }
 
         if let Ok(event) = event_rx.try_recv() {
             process_event(&mut app, event, &slot_manager, &event_tx).await;
@@ -132,6 +158,60 @@ async fn run_interactive() -> color_eyre::Result<()> {
     terminal.show_cursor()?;
 
     Ok(())
+}
+
+/// Connect to all running agent hosts and start streaming their output.
+async fn connect_running_agents(
+    slot_manager: &Arc<SlotManager>,
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+) {
+    let slots_dir = slot_manager.slots_directory().to_path_buf();
+    let running = agent_host::list_running(&slots_dir)
+        .await
+        .unwrap_or_default();
+
+    for name in running {
+        spawn_agent_stream_task(&name, &slots_dir, event_tx);
+    }
+}
+
+/// Spawn a background task that connects to an agent host and streams terminal output.
+pub fn spawn_agent_stream_task(
+    name: &str,
+    slots_dir: &std::path::Path,
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+) {
+    let name = name.to_string();
+    let slots_dir = slots_dir.to_path_buf();
+    let tx = event_tx.clone();
+
+    tokio::spawn(async move {
+        let mut conn = match agent_host::connect(&name, &slots_dir).await {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = tx.send(AppEvent::Error(format!(
+                    "Agent connect failed for {name}: {e}"
+                )));
+                return;
+            }
+        };
+
+        while let Ok((channel, data)) = conn.read_frame().await {
+            if channel == ao_core::services::agent_host::CHANNEL_PTY_OUTPUT {
+                let _ = tx.send(AppEvent::TerminalOutput {
+                    slot_name: name.clone(),
+                    bytes: data,
+                });
+            } else if channel == ao_core::services::agent_host::CHANNEL_CONTROL {
+                if let Ok(text) = std::str::from_utf8(&data) {
+                    if text.contains("exited") {
+                        let _ = tx.send(AppEvent::Info(format!("Agent {name} exited")));
+                        break;
+                    }
+                }
+            }
+        }
+    });
 }
 
 /// Run headless mode: read scripted input, render to TestBackend, dump frames to stdout.
@@ -446,21 +526,10 @@ async fn process_event(
                 }
             }
         }
+        AppEvent::TerminalOutput { slot_name, bytes } => {
+            app.feed_terminal_bytes(&slot_name, &bytes);
+        }
     }
-}
-
-/// Pop into a tmux session: leave alternate screen, attach, then restore.
-async fn pop_in(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, session: &str) {
-    let _ = disable_raw_mode();
-    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
-    let _ = terminal.show_cursor();
-
-    let _ = tmux::attach_session(session).await;
-
-    let _ = enable_raw_mode();
-    let _ = execute!(terminal.backend_mut(), EnterAlternateScreen);
-    let _ = terminal.hide_cursor();
-    let _ = terminal.clear();
 }
 
 /// Find the .slots directory, walking up from CWD to find a project root.

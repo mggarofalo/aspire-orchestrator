@@ -1,10 +1,13 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 use std::time::Instant;
 
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+use tokio::sync::Mutex;
 
 use ao_core::models::{AgentStatus, RepoCandidate, Slot, SlotStatus};
+use ao_core::services::agent_host::AgentConnection;
 use ao_core::services::log_tailer::LogSource as CoreLogSource;
 
 /// The active mode determines which UI is shown and how keys are dispatched.
@@ -23,6 +26,8 @@ pub enum Mode {
     BlueprintListDialog,
     BlueprintSaveDialog,
     BatchProgress,
+    /// Full-screen terminal mode for the selected slot.
+    Terminal,
 }
 
 /// What a confirmed dialog action should do.
@@ -445,8 +450,10 @@ pub struct App {
     pub status_message: Option<String>,
     pub create_form: CreateSlotForm,
     pub agent_form: SpawnAgentForm,
-    /// Set by pop-in key handler; consumed by main loop.
-    pub pop_in_target: Option<String>,
+
+    // Terminal
+    pub terminal_parsers: HashMap<String, vt100::Parser>,
+    pub agent_connections: HashMap<String, Arc<Mutex<AgentConnection>>>,
 
     // Dashboard
     pub activity: HashMap<String, SlotActivity>,
@@ -487,7 +494,8 @@ impl App {
             status_message: None,
             create_form: CreateSlotForm::default(),
             agent_form: SpawnAgentForm::default(),
-            pop_in_target: None,
+            terminal_parsers: HashMap::new(),
+            agent_connections: HashMap::new(),
             activity: HashMap::new(),
             dashboard_selected: 0,
             log_buffer: LogBuffer::new(),
@@ -498,6 +506,15 @@ impl App {
             blueprint_save: BlueprintSaveState::new(),
             batch_progress: None,
         }
+    }
+
+    /// Feed terminal output bytes to the slot's vt100 parser.
+    pub fn feed_terminal_bytes(&mut self, slot_name: &str, bytes: &[u8]) {
+        let parser = self
+            .terminal_parsers
+            .entry(slot_name.to_string())
+            .or_insert_with(|| vt100::Parser::new(40, 120, 1000));
+        parser.process(bytes);
     }
 
     pub fn selected_slot(&self) -> Option<&Slot> {

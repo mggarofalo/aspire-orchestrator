@@ -11,6 +11,7 @@ use crate::app::{
 use crate::event::AppEvent;
 
 use ao_core::models::{AgentStatus, SlotStatus};
+use ao_core::services::agent_host;
 use ao_core::services::blueprint::BlueprintStore;
 use ao_core::services::slot_manager::SlotManager;
 
@@ -27,6 +28,7 @@ pub async fn handle_key(
             ViewMode::SlotList => handle_slot_list(app, key, slot_manager, event_tx).await,
             ViewMode::Dashboard => handle_dashboard(app, key, slot_manager, event_tx).await,
         },
+        Mode::Terminal => handle_terminal(app, key, slot_manager).await,
         Mode::MultiplexLog => handle_multiplex_log(app, key),
         Mode::CreateSlotDialog => handle_create_dialog(app, key, slot_manager, event_tx),
         Mode::SpawnAgentDialog => handle_agent_dialog(app, key, slot_manager, event_tx),
@@ -107,7 +109,8 @@ async fn handle_slot_list(
                 app.should_quit = true;
             } else {
                 app.mode = Mode::ConfirmDialog {
-                    message: "Quit orchestrator? Running processes will continue in tmux.".into(),
+                    message: "Quit orchestrator? Running agents will continue in background."
+                        .into(),
                     action: ConfirmAction::Quit,
                 };
             }
@@ -229,7 +232,11 @@ async fn handle_slot_list(
         }
         KeyCode::Char('p') | KeyCode::Enter => {
             if let Some(slot) = app.selected_slot() {
-                app.pop_in_target = Some(slot.tmux_session());
+                if slot.agent_status == AgentStatus::Active
+                    || app.terminal_parsers.contains_key(&slot.name)
+                {
+                    app.mode = Mode::Terminal;
+                }
             }
         }
         KeyCode::Char('l') => {
@@ -301,7 +308,8 @@ async fn handle_dashboard(
                 app.should_quit = true;
             } else {
                 app.mode = Mode::ConfirmDialog {
-                    message: "Quit orchestrator? Running processes will continue in tmux.".into(),
+                    message: "Quit orchestrator? Running agents will continue in background."
+                        .into(),
                     action: ConfirmAction::Quit,
                 };
             }
@@ -344,13 +352,107 @@ async fn handle_dashboard(
         }
         KeyCode::Char('p') => {
             if let Some(slot) = app.slots.get(app.dashboard_selected) {
-                app.pop_in_target = Some(slot.tmux_session());
+                if slot.agent_status == AgentStatus::Active
+                    || app.terminal_parsers.contains_key(&slot.name)
+                {
+                    app.selected_index = app.dashboard_selected;
+                    app.mode = Mode::Terminal;
+                }
             }
         }
         KeyCode::Char('?') => {
             app.mode = Mode::HelpDialog;
         }
         _ => {}
+    }
+}
+
+// ─── Terminal Mode ──────────────────────────────────────────────────────
+
+async fn handle_terminal(app: &mut App, key: KeyEvent, slot_manager: &Arc<SlotManager>) {
+    // Esc exits terminal mode
+    if key.code == KeyCode::Esc {
+        app.mode = Mode::SlotList;
+        return;
+    }
+
+    // Forward all other keys to the agent PTY
+    let slot_name = match app.selected_slot() {
+        Some(s) => s.name.clone(),
+        None => {
+            app.mode = Mode::SlotList;
+            return;
+        }
+    };
+
+    // Get or create connection
+    if !app.agent_connections.contains_key(&slot_name) {
+        let slots_dir = slot_manager.slots_directory().to_path_buf();
+        match agent_host::connect(&slot_name, &slots_dir).await {
+            Ok(conn) => {
+                app.agent_connections
+                    .insert(slot_name.clone(), Arc::new(tokio::sync::Mutex::new(conn)));
+            }
+            Err(_) => {
+                app.set_status(format!("Cannot connect to agent for {slot_name}"));
+                app.mode = Mode::SlotList;
+                return;
+            }
+        }
+    }
+
+    let bytes = key_to_bytes(key);
+    if !bytes.is_empty() {
+        if let Some(conn) = app.agent_connections.get(&slot_name) {
+            let mut conn = conn.lock().await;
+            let _ = conn.send_input(&bytes).await;
+        }
+    }
+}
+
+/// Convert a crossterm KeyEvent to terminal escape bytes.
+fn key_to_bytes(key: KeyEvent) -> Vec<u8> {
+    match key.code {
+        KeyCode::Char(c) => {
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                // Ctrl+A = 0x01, Ctrl+C = 0x03, etc.
+                let ctrl = (c as u8).wrapping_sub(b'a').wrapping_add(1);
+                vec![ctrl]
+            } else {
+                let mut buf = [0u8; 4];
+                let s = c.encode_utf8(&mut buf);
+                s.as_bytes().to_vec()
+            }
+        }
+        KeyCode::Enter => vec![b'\r'],
+        KeyCode::Backspace => vec![0x7f],
+        KeyCode::Tab => vec![b'\t'],
+        KeyCode::Up => b"\x1b[A".to_vec(),
+        KeyCode::Down => b"\x1b[B".to_vec(),
+        KeyCode::Right => b"\x1b[C".to_vec(),
+        KeyCode::Left => b"\x1b[D".to_vec(),
+        KeyCode::Home => b"\x1b[H".to_vec(),
+        KeyCode::End => b"\x1b[F".to_vec(),
+        KeyCode::PageUp => b"\x1b[5~".to_vec(),
+        KeyCode::PageDown => b"\x1b[6~".to_vec(),
+        KeyCode::Delete => b"\x1b[3~".to_vec(),
+        KeyCode::Insert => b"\x1b[2~".to_vec(),
+        KeyCode::F(n) => match n {
+            1 => b"\x1bOP".to_vec(),
+            2 => b"\x1bOQ".to_vec(),
+            3 => b"\x1bOR".to_vec(),
+            4 => b"\x1bOS".to_vec(),
+            5 => b"\x1b[15~".to_vec(),
+            6 => b"\x1b[17~".to_vec(),
+            7 => b"\x1b[18~".to_vec(),
+            8 => b"\x1b[19~".to_vec(),
+            9 => b"\x1b[20~".to_vec(),
+            10 => b"\x1b[21~".to_vec(),
+            11 => b"\x1b[23~".to_vec(),
+            12 => b"\x1b[24~".to_vec(),
+            _ => vec![],
+        },
+        _ => vec![],
     }
 }
 
@@ -1361,7 +1463,7 @@ fn launch_batch_spawn_agents(
                 });
             }
 
-            // Brief delay for tmux serialization
+            // Brief delay between spawns
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
 

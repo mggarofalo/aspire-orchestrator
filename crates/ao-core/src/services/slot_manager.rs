@@ -7,7 +7,7 @@ use tokio::sync::{mpsc, RwLock};
 
 use crate::error::{OrchestratorError, Result};
 use crate::models::{AgentStatus, Slot, SlotStatus};
-use crate::services::{aspire, config_loader, discovery, git, tmux};
+use crate::services::{agent_host, aspire, config_loader, discovery, git};
 
 use super::log_tailer::{LogLine, LogSource};
 use super::ports::PortAllocator;
@@ -55,24 +55,44 @@ impl SlotManager {
         Ok(())
     }
 
-    /// Reconnect to existing tmux sessions, resetting status for missing sessions.
+    /// Reconnect to existing agent host processes, resetting status for missing ones.
     pub async fn reconnect_existing_sessions(&self) -> Result<()> {
-        let sessions = tmux::list_sessions().await.unwrap_or_default();
-        let ao_sessions: std::collections::HashSet<String> = sessions
-            .into_iter()
-            .filter(|s| s.starts_with("ao-") && s != "ao-orchestrator")
-            .map(|s| s[3..].to_string())
-            .collect();
+        let running = agent_host::list_running(&self.slots_directory)
+            .await
+            .unwrap_or_default();
+        let running_set: std::collections::HashSet<String> = running.into_iter().collect();
 
         let mut slots = self.slots.write().await;
         for slot in slots.iter_mut() {
-            if !ao_sessions.contains(&slot.name) {
-                slot.status = SlotStatus::Ready;
-                slot.agent_status = AgentStatus::None;
+            if !running_set.contains(&slot.name) {
+                // No running agent host — reset agent status
+                if slot.agent_status == AgentStatus::Active
+                    || slot.agent_status == AgentStatus::Starting
+                {
+                    slot.agent_status = AgentStatus::Stopped;
+                }
             }
         }
         drop(slots);
         self.persist().await?;
+
+        // Start tailing log files for running agents
+        for name in &running_set {
+            if let Some(slot) = self.get_slot(name).await {
+                let log_path = slot.agent_log_path();
+                if log_path.exists() {
+                    let handle = super::log_tailer::start_tailing(
+                        log_path,
+                        name.clone(),
+                        LogSource::Agent,
+                        self.log_tx.clone(),
+                    );
+                    let mut handles = self.agent_tailer_handles.write().await;
+                    handles.insert(name.clone(), handle);
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -155,17 +175,37 @@ impl SlotManager {
             slot.port_allocations = allocations;
         }
 
-        // Create tmux session
-        tmux::create_session(&slot.tmux_session(), Some(&clone_path_str)).await?;
-        tmux::rename_window(&slot.tmux_session(), "0", "aspire").await?;
-        tmux::create_window(&slot.tmux_session(), "claude", Some(&clone_path_str)).await?;
-
-        // Run setup commands if config exists
+        // Run setup commands as direct processes (no tmux needed)
         if let Some(ref config) = config {
             for cmd in &config.setup {
-                tmux::send_keys(&slot.tmux_session(), "aspire", cmd).await?;
-                // Brief pause between setup commands
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let log_tx = self.log_tx.clone();
+                let slot_name = name.to_string();
+                let output = tokio::process::Command::new("bash")
+                    .args(["-c", cmd])
+                    .current_dir(&clone_path)
+                    .output()
+                    .await
+                    .map_err(|e| {
+                        OrchestratorError::Process(format!("setup command failed: {e}"))
+                    })?;
+
+                // Forward stdout/stderr to log channel
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let _ = log_tx.send(LogLine {
+                        slot_name: slot_name.clone(),
+                        source: LogSource::Aspire,
+                        line: line.to_string(),
+                    });
+                }
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                for line in stderr.lines() {
+                    let _ = log_tx.send(LogLine {
+                        slot_name: slot_name.clone(),
+                        source: LogSource::Aspire,
+                        line: line.to_string(),
+                    });
+                }
             }
         }
 
@@ -297,7 +337,7 @@ impl SlotManager {
         Ok(())
     }
 
-    /// Spawn a Claude agent in the slot's tmux session.
+    /// Spawn a Claude agent via an agent host process.
     pub async fn spawn_agent(
         &self,
         name: &str,
@@ -313,11 +353,24 @@ impl SlotManager {
         self.update_slot(name, |s| s.agent_status = AgentStatus::Starting)
             .await?;
 
-        super::agent::spawn(&slot, prompt, allowed_tools, max_turns).await?;
+        // Build the command argument list
+        let command = super::agent::build_claude_command(&slot, prompt, allowed_tools, max_turns);
+        let log_path = slot.agent_log_path();
+
+        // Clear agent log file
+        tokio::fs::write(&log_path, "").await.ok();
+
+        // Spawn the agent host process
+        agent_host::spawn(
+            name,
+            &command,
+            &slot.clone_path,
+            &log_path.to_string_lossy(),
+            &self.slots_directory,
+        )
+        .await?;
 
         // Start tailing the agent log file
-        let log_path = slot.agent_log_path();
-        tokio::fs::write(&log_path, "").await.ok();
         let handle = super::log_tailer::start_tailing(
             log_path,
             name.to_string(),
@@ -363,7 +416,7 @@ impl SlotManager {
         Ok(())
     }
 
-    /// Destroy a slot: kill processes, remove tmux session, delete clone directory.
+    /// Destroy a slot: kill agent host, stop Aspire, delete clone directory.
     pub async fn destroy_slot(&self, name: &str) -> Result<()> {
         // Stop aspire if running
         {
@@ -382,9 +435,9 @@ impl SlotManager {
             }
         }
 
-        // Clean up tmux session, clone directory, and ports
+        // Kill agent host process and clean up
         if let Some(slot) = self.get_slot(name).await {
-            let _ = tmux::kill_session(&slot.tmux_session()).await;
+            let _ = agent_host::kill(name, &self.slots_directory).await;
 
             let clone_path = PathBuf::from(&slot.clone_path);
             if clone_path.exists() {
@@ -411,6 +464,11 @@ impl SlotManager {
         self.slots_directory
             .parent()
             .unwrap_or(&self.slots_directory)
+    }
+
+    /// Returns the slots directory path.
+    pub fn slots_directory(&self) -> &Path {
+        &self.slots_directory
     }
 
     /// Helper: update a slot by name and persist.

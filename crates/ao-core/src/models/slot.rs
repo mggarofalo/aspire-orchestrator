@@ -71,8 +71,8 @@ impl Slot {
         }
     }
 
-    pub fn tmux_session(&self) -> String {
-        format!("ao-{}", self.name)
+    pub fn agent_host_file(&self) -> PathBuf {
+        PathBuf::from(&self.clone_path).join(".agent-host.json")
     }
 
     pub fn aspire_log_path(&self) -> PathBuf {

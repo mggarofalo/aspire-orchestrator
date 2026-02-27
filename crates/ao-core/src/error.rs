@@ -17,8 +17,8 @@ pub enum OrchestratorError {
     #[error("git operation failed: {0}")]
     Git(String),
 
-    #[error("tmux operation failed: {0}")]
-    Tmux(String),
+    #[error("agent host operation failed: {0}")]
+    AgentHost(String),
 
     #[error("aspire operation failed: {0}")]
     Aspire(String),

@@ -30,60 +30,37 @@ pub fn build_system_prompt(slot: &Slot) -> String {
     lines.join(" ")
 }
 
-/// Escape a string for shell embedding inside double quotes.
-fn escape_for_shell(input: &str) -> String {
-    input.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-/// Build the full `claude` CLI command string for tmux send-keys.
+/// Build the `claude` CLI command as an argument list (for direct process spawning).
 pub fn build_claude_command(
     slot: &Slot,
     prompt: Option<&str>,
     allowed_tools: Option<&str>,
     max_turns: Option<u32>,
-) -> String {
+) -> Vec<String> {
     let tools = allowed_tools.unwrap_or(DEFAULT_ALLOWED_TOOLS);
-    let mut parts = vec!["claude".to_string()];
-
-    parts.push(format!("--allowedTools \\\"{tools}\\\""));
+    let mut args = vec![
+        "claude".to_string(),
+        "--allowedTools".to_string(),
+        tools.to_string(),
+    ];
 
     let system_prompt = build_system_prompt(slot);
-    parts.push(format!(
-        "--append-system-prompt \\\"{}\\\"",
-        escape_for_shell(&system_prompt)
-    ));
+    args.push("--append-system-prompt".to_string());
+    args.push(system_prompt);
 
     if let Some(turns) = max_turns {
-        parts.push(format!("--max-turns {turns}"));
+        args.push("--max-turns".to_string());
+        args.push(turns.to_string());
     }
 
     if let Some(p) = prompt {
         if !p.is_empty() {
-            parts.push(format!("-p \\\"{}\\\"", escape_for_shell(p)));
+            args.push("-p".to_string());
+            args.push(p.to_string());
         }
     }
 
-    parts.join(" ")
-}
-
-/// Spawn a Claude agent in the slot's tmux session.
-pub async fn spawn(
-    slot: &Slot,
-    prompt: Option<&str>,
-    allowed_tools: Option<&str>,
-    max_turns: Option<u32>,
-) -> crate::Result<()> {
-    let session = slot.tmux_session();
-    let log_path = slot.agent_log_path();
-
-    // Start pipe-pane to capture agent output
-    super::tmux::start_pipe_pane(&session, "claude", &log_path.to_string_lossy()).await?;
-
-    // Build and send the command
-    let command = build_claude_command(slot, prompt, allowed_tools, max_turns);
-    super::tmux::send_keys(&session, "claude", &command).await?;
-
-    Ok(())
+    args
 }
 
 #[cfg(test)]
@@ -133,34 +110,27 @@ mod tests {
     #[test]
     fn build_command_basic() {
         let slot = test_slot();
-        let cmd = build_claude_command(&slot, Some("Fix the bug"), None, None);
-        assert!(cmd.starts_with("claude"));
-        assert!(cmd.contains("--allowedTools"));
-        assert!(cmd.contains("--append-system-prompt"));
-        assert!(cmd.contains("-p \\\"Fix the bug\\\""));
+        let args = build_claude_command(&slot, Some("Fix the bug"), None, None);
+        assert_eq!(args[0], "claude");
+        assert!(args.contains(&"--allowedTools".to_string()));
+        assert!(args.contains(&"--append-system-prompt".to_string()));
+        assert!(args.contains(&"-p".to_string()));
+        assert!(args.contains(&"Fix the bug".to_string()));
     }
 
     #[test]
     fn build_command_with_max_turns() {
         let slot = test_slot();
-        let cmd = build_claude_command(&slot, Some("Test"), None, Some(10));
-        assert!(cmd.contains("--max-turns 10"));
+        let args = build_claude_command(&slot, Some("Test"), None, Some(10));
+        assert!(args.contains(&"--max-turns".to_string()));
+        assert!(args.contains(&"10".to_string()));
     }
 
     #[test]
     fn build_command_custom_tools() {
         let slot = test_slot();
-        let cmd = build_claude_command(&slot, None, Some("Read,Write"), None);
-        assert!(cmd.contains("--allowedTools \\\"Read,Write\\\""));
-    }
-
-    #[test]
-    fn escape_for_shell_handles_quotes() {
-        assert_eq!(escape_for_shell(r#"say "hello""#), r#"say \"hello\""#);
-    }
-
-    #[test]
-    fn escape_for_shell_handles_backslashes() {
-        assert_eq!(escape_for_shell(r"path\to\file"), r"path\\to\\file");
+        let args = build_claude_command(&slot, None, Some("Read,Write"), None);
+        assert!(args.contains(&"--allowedTools".to_string()));
+        assert!(args.contains(&"Read,Write".to_string()));
     }
 }
