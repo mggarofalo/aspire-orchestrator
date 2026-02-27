@@ -35,6 +35,8 @@ pub enum Mode {
 pub enum ConfirmAction {
     DestroySlot(String),
     DestroyAll,
+    StopAspire(String),
+    StopAllAspire,
     LoadBlueprint(String),
     Quit,
 }

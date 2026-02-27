@@ -78,7 +78,17 @@ async fn handle_slot_list(
                 return;
             }
             KeyCode::Char('K') => {
-                launch_batch_stop_all(app, slot_manager, event_tx);
+                let running = app
+                    .slots
+                    .iter()
+                    .filter(|s| s.status == SlotStatus::Running)
+                    .count();
+                if running > 0 {
+                    app.mode = Mode::ConfirmDialog {
+                        message: format!("Stop Aspire for all {running} running slots?"),
+                        action: ConfirmAction::StopAllAspire,
+                    };
+                }
                 return;
             }
             KeyCode::Char('R') => {
@@ -170,19 +180,12 @@ async fn handle_slot_list(
         }
         KeyCode::Char('k') => {
             if let Some(slot) = app.selected_slot() {
-                let name = slot.name.clone();
-                let tx = event_tx.clone();
-                let sm = Arc::clone(slot_manager);
-                tokio::spawn(async move {
-                    match sm.stop_aspire(&name).await {
-                        Ok(()) => {
-                            let _ = tx.send(AppEvent::Info(format!("Aspire stopped for {name}")));
-                        }
-                        Err(e) => {
-                            let _ = tx.send(AppEvent::Error(format!("Stop failed: {e}")));
-                        }
-                    }
-                });
+                if slot.status == SlotStatus::Running {
+                    app.mode = Mode::ConfirmDialog {
+                        message: format!("Stop Aspire for '{}'?", slot.name),
+                        action: ConfirmAction::StopAspire(slot.name.clone()),
+                    };
+                }
             }
         }
         KeyCode::Char('d') => {
@@ -277,7 +280,17 @@ async fn handle_dashboard(
                 return;
             }
             KeyCode::Char('K') => {
-                launch_batch_stop_all(app, slot_manager, event_tx);
+                let running = app
+                    .slots
+                    .iter()
+                    .filter(|s| s.status == SlotStatus::Running)
+                    .count();
+                if running > 0 {
+                    app.mode = Mode::ConfirmDialog {
+                        message: format!("Stop Aspire for all {running} running slots?"),
+                        action: ConfirmAction::StopAllAspire,
+                    };
+                }
                 return;
             }
             KeyCode::Char('R') => {
@@ -790,6 +803,27 @@ fn handle_confirm_dialog(
                 }
                 ConfirmAction::DestroyAll => {
                     launch_batch_destroy_all(app, slot_manager, event_tx);
+                }
+                ConfirmAction::StopAspire(name) => {
+                    let tx = event_tx.clone();
+                    let sm = Arc::clone(slot_manager);
+                    app.mode = Mode::SlotList;
+                    tokio::spawn(async move {
+                        match sm.stop_aspire(&name).await {
+                            Ok(()) => {
+                                let _ = tx.send(AppEvent::Info(format!(
+                                    "Aspire stopped for {name}"
+                                )));
+                            }
+                            Err(e) => {
+                                let _ =
+                                    tx.send(AppEvent::Error(format!("Stop failed: {e}")));
+                            }
+                        }
+                    });
+                }
+                ConfirmAction::StopAllAspire => {
+                    launch_batch_stop_all(app, slot_manager, event_tx);
                 }
                 ConfirmAction::LoadBlueprint(name) => {
                     launch_blueprint_load(app, &name, slot_manager, event_tx);
