@@ -15,12 +15,6 @@ pub enum AppEvent {
     Tick,
     /// A new log line from a slot's log tailer or aspire process.
     Log(LogLine),
-    /// An aspire process exited for a slot.
-    #[allow(dead_code)]
-    ProcessExited {
-        slot_name: String,
-        code: Option<i32>,
-    },
     /// An async operation produced an error to display.
     Error(String),
     /// An async operation completed successfully with a message.

@@ -1,8 +1,3 @@
-mod app;
-mod event;
-mod keys;
-mod ui;
-
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -20,8 +15,9 @@ use ao_core::services::log_tailer::LogLine;
 use ao_core::services::slot_manager::SlotManager;
 use ao_core::services::tmux;
 
-use crate::app::{App, CreateSlotField, Mode};
-use crate::event::{spawn_input_task, spawn_tick_task, AppEvent};
+use ao_tui::app::{App, CreateSlotField, Mode};
+use ao_tui::event::{spawn_input_task, spawn_tick_task, AppEvent};
+use ao_tui::{keys, ui};
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
@@ -400,13 +396,6 @@ async fn process_event(
                     }
                 }
             }
-        }
-        AppEvent::ProcessExited { slot_name, code } => {
-            app.set_status(format!(
-                "Process exited for {slot_name} (code: {})",
-                code.map_or("unknown".into(), |c: i32| c.to_string())
-            ));
-            app.slots = slot_manager.get_slots().await;
         }
         AppEvent::Error(msg) => {
             tracing::debug!(error = %msg, "event_error");

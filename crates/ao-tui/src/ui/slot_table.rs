@@ -77,9 +77,10 @@ fn agent_status_icon(slot: &Slot) -> Span<'static> {
 }
 
 fn truncate_branch(branch: &str, max_len: usize) -> String {
-    if branch.len() <= max_len {
+    if branch.chars().count() <= max_len {
         branch.to_string()
     } else {
-        format!("{}...", &branch[..max_len - 3])
+        let truncated: String = branch.chars().take(max_len - 3).collect();
+        format!("{truncated}...")
     }
 }

@@ -141,18 +141,18 @@ impl SlotManager {
             slot.branch = current;
         }
 
-        // Load config and allocate ports
-        match config_loader::load(&clone_path) {
-            Ok(config) => {
-                let allocations = self
-                    .port_allocator
-                    .allocate_for_overrides(&config.port_overrides)?;
-                slot.port_allocations = allocations;
-            }
-            Err(OrchestratorError::ConfigNotFound(_)) => {
-                // Config is optional
-            }
+        // Load config (optional), allocate ports, run setup commands
+        let config = match config_loader::load(&clone_path) {
+            Ok(config) => Some(config),
+            Err(OrchestratorError::ConfigNotFound(_)) => None,
             Err(e) => return Err(e),
+        };
+
+        if let Some(ref config) = config {
+            let allocations = self
+                .port_allocator
+                .allocate_for_overrides(&config.port_overrides)?;
+            slot.port_allocations = allocations;
         }
 
         // Create tmux session
@@ -161,7 +161,7 @@ impl SlotManager {
         tmux::create_window(&slot.tmux_session(), "claude", Some(&clone_path_str)).await?;
 
         // Run setup commands if config exists
-        if let Ok(config) = config_loader::load(&clone_path) {
+        if let Some(ref config) = config {
             for cmd in &config.setup {
                 tmux::send_keys(&slot.tmux_session(), "aspire", cmd).await?;
                 // Brief pause between setup commands
@@ -382,22 +382,15 @@ impl SlotManager {
             }
         }
 
-        // Kill tmux session
-        let slot = self.get_slot(name).await;
-        if let Some(ref slot) = slot {
+        // Clean up tmux session, clone directory, and ports
+        if let Some(slot) = self.get_slot(name).await {
             let _ = tmux::kill_session(&slot.tmux_session()).await;
-        }
 
-        // Remove clone directory
-        if let Some(ref slot) = slot {
             let clone_path = PathBuf::from(&slot.clone_path);
             if clone_path.exists() {
                 tokio::fs::remove_dir_all(&clone_path).await.ok();
             }
-        }
 
-        // Release ports
-        if let Some(ref slot) = slot {
             for alloc in &slot.port_allocations {
                 self.port_allocator.release(alloc.port);
             }

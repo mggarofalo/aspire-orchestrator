@@ -10,13 +10,10 @@ impl RepoCandidate {
     /// Returns the value to fill into the source field: local path if available,
     /// else remote URL, else just the name.
     pub fn source_value(&self) -> &str {
-        if let Some(ref p) = self.local_path {
-            p
-        } else if let Some(ref u) = self.remote_url {
-            u
-        } else {
-            &self.name
-        }
+        self.local_path
+            .as_deref()
+            .or(self.remote_url.as_deref())
+            .unwrap_or(&self.name)
     }
 
     /// Display label shown in the candidate list.
@@ -26,11 +23,7 @@ impl RepoCandidate {
 
     /// A hint about where the repo lives: local path or "(remote)".
     pub fn location_hint(&self) -> &str {
-        if let Some(ref p) = self.local_path {
-            p
-        } else {
-            "(remote)"
-        }
+        self.local_path.as_deref().unwrap_or("(remote)")
     }
 
     /// Whether this candidate has a local clone.

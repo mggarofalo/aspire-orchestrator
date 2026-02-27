@@ -84,8 +84,6 @@ pub enum Severity {
 
 /// A single entry in the multiplexed log buffer.
 pub struct LogEntry {
-    #[allow(dead_code)]
-    pub seq: u64,
     pub slot_name: String,
     pub source: CoreLogSource,
     pub text: String,
@@ -96,7 +94,6 @@ pub struct LogEntry {
 /// Ring buffer holding interleaved log entries from all slots.
 pub struct LogBuffer {
     pub entries: VecDeque<LogEntry>,
-    pub next_seq: u64,
     pub slot_colors: HashMap<String, u8>,
     next_color: u8,
 }
@@ -105,7 +102,6 @@ impl Default for LogBuffer {
     fn default() -> Self {
         Self {
             entries: VecDeque::with_capacity(Self::CAPACITY),
-            next_seq: 0,
             slot_colors: HashMap::new(),
             next_color: 0,
         }
@@ -122,15 +118,12 @@ impl LogBuffer {
     pub fn push(&mut self, slot_name: String, source: CoreLogSource, text: String) {
         let color_index = self.color_for_slot(&slot_name);
         let severity = classify_severity(&text);
-        let seq = self.next_seq;
-        self.next_seq += 1;
 
         if self.entries.len() >= Self::CAPACITY {
             self.entries.pop_front();
         }
 
         self.entries.push_back(LogEntry {
-            seq,
             slot_name,
             source,
             text,
@@ -540,11 +533,6 @@ impl App {
         self.status_message = Some(msg.into());
     }
 
-    #[allow(dead_code)]
-    pub fn clear_status(&mut self) {
-        self.status_message = None;
-    }
-
     /// Record a log line for activity tracking (dashboard sparklines).
     pub fn record_activity(&mut self, slot_name: &str, line: &str) {
         let activity = self.activity.entry(slot_name.to_string()).or_default();
@@ -556,8 +544,9 @@ impl App {
 
         let trimmed = line.trim();
         if !trimmed.is_empty() {
-            let truncated = if trimmed.len() > 60 {
-                format!("{}...", &trimmed[..57])
+            let truncated = if trimmed.chars().count() > 60 {
+                let end: String = trimmed.chars().take(57).collect();
+                format!("{end}...")
             } else {
                 trimmed.to_string()
             };
