@@ -149,8 +149,10 @@ impl SlotManager {
             clone_path_str.clone(),
         );
 
-        // Clean up stale clone directory from a previous failed attempt
+        // Clean up stale clone directory from a previous failed attempt.
+        // Kill any lingering agent host first so files aren't locked.
         if clone_path.exists() {
+            let _ = agent_host::kill(name, &self.slots_directory).await;
             tokio::fs::remove_dir_all(&clone_path).await.map_err(|e| {
                 OrchestratorError::Process(format!(
                     "failed to remove stale directory {}: {e}",
