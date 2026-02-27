@@ -1,0 +1,28 @@
+---
+source: crates/ao-tui/tests/test_slot_list.rs
+expression: output
+---
+" AspireOrchestrator (Rust)                                                                          "
+"┌ Slots ──────────────────────────┐┌ Details ──────────────────────────────────────────────────────┐"
+"│>  auth  ▶ ●  feature/auth       ││  Branch     feature/auth                                      │"
+"│                                 ││  Status     Running                                           │"
+"│                                 ││  Agent      Active                                            │"
+"│                                 ││  Dashboard  http://localhost:15000                            │"
+"│                                 ││  Service    api: http://localhost:5001                        │"
+"│                                 ││  Ports      http=5001, https=5002                             │"
+"│                                 │└───────────────────────────────────────────────────────────────┘"
+"│                                 │┌ Agent Log [L] toggle ─────────────────────────────────────────┐"
+"│                                 ││ No log output                                                 │"
+"│                                 ││                                                               │"
+"│                                 ││                                                               │"
+"│                                 ││                                                               │"
+"│                                 ││                                                               │"
+"│                                 ││                                                               │"
+"│                                 ││                                                               │"
+"│                                 ││                                                               │"
+"│                                 ││                                                               │"
+"│                                 ││                                                               │"
+"│                                 ││                                                               │"
+"└─────────────────────────────────┘└───────────────────────────────────────────────────────────────┘"
+"                                                                                                    "
+"[N]ew [S]tart [K]ill [D]estroy [A]gent [R]ebase [G]push [P]op-in [L]og [?]help [Q]uit               "

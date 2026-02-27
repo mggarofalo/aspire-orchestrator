@@ -1,0 +1,28 @@
+---
+source: crates/ao-tui/tests/test_slot_list.rs
+expression: output
+---
+" AspireOrchestrator (Rust)                                                      "
+"┌ Slots ───────────────────┐┌ Details ─────────────────────────────────────────┐"
+"│>  auth  ■ ○  feature/very││  Branch     feature/very-long-branch-name-that-ex│"
+"│                          ││  Status     Ready                                │"
+"│                          ││  Agent      None                                 │"
+"│                          ││                                                  │"
+"│                          ││                                                  │"
+"│                          ││                                                  │"
+"│                          │└──────────────────────────────────────────────────┘"
+"│                          │┌ Agent Log [L] toggle ────────────────────────────┐"
+"│                          ││ No log output                                    │"
+"│                          ││                                                  │"
+"│                          ││                                                  │"
+"│                          ││                                                  │"
+"│                          ││                                                  │"
+"│                          ││                                                  │"
+"│                          ││                                                  │"
+"│                          ││                                                  │"
+"│                          ││                                                  │"
+"│                          ││                                                  │"
+"│                          ││                                                  │"
+"└──────────────────────────┘└──────────────────────────────────────────────────┘"
+"                                                                                "
+"[N]ew [S]tart [K]ill [D]estroy [A]gent [R]ebase [G]push [P]op-in [L]og [?]help ["

@@ -1,0 +1,28 @@
+---
+source: crates/ao-tui/tests/test_help_dialog.rs
+expression: output
+---
+" AspireOrchestrator (Rust)                                  "
+"┌ Slots ────────────┐┌ Details ────────────────────────────┐"
+"│>  auth  ■ ○  featu││  Branch     feature/auth            │"
+"│                   ││  Status     Ready                   │"
+"│           ┌ Help — Keybindings ──────────────┐           │"
+"│           │  Slot List                       │           │"
+"│           │    N           Create new slot   │           │"
+"│           │    S           Start Aspire stack│           │"
+"│           │    K           Kill (stop) Aspire│───────────┘"
+"│           │stack                             │───────────┐"
+"│           │    D           Destroy slot      │           │"
+"│           │    A           Spawn agent       │           │"
+"│           │    R           Rebase branch     │           │"
+"│           │    G           Git push          │           │"
+"│           │    P           Pop-in to tmux    │           │"
+"│           │session                           │           │"
+"│           │    L           Toggle log source │           │"
+"│           │    ?           Show this help    │           │"
+"│           │    Q           Quit orchestrator │           │"
+"│           └──────────────────────────────────┘           │"
+"│                   ││                                     │"
+"└───────────────────┘└─────────────────────────────────────┘"
+"                                                            "
+"[N]ew [S]tart [K]ill [D]estroy [A]gent [R]ebase [G]push [P]o"

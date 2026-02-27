@@ -1,0 +1,21 @@
+[package]
+name = "ao-tui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ao-core = { path = "../ao-core" }
+ratatui = "0.29"
+crossterm = "0.28"
+tokio = { version = "1", features = ["full"] }
+color-eyre = "0.6"
+fuzzy-matcher = "0.3"
+chrono = "0.4"
+regex = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+[dev-dependencies]
+insta = "1"
+chrono = "0.4"
