@@ -129,7 +129,25 @@ async fn run_interactive() -> color_eyre::Result<()> {
     app.slots = slot_manager.get_slots().await;
 
     // Main event loop
+    let mut prev_mode_is_dialog = false;
     loop {
+        // Force full repaint when leaving a dialog overlay to avoid residual text.
+        let cur_mode_is_dialog = matches!(
+            app.mode,
+            Mode::CreateSlotDialog
+                | Mode::SpawnAgentDialog
+                | Mode::ConfirmDialog { .. }
+                | Mode::HelpDialog
+                | Mode::Loading(_)
+                | Mode::BlueprintListDialog
+                | Mode::BlueprintSaveDialog
+                | Mode::BatchProgress
+        );
+        if prev_mode_is_dialog && !cur_mode_is_dialog {
+            terminal.clear()?;
+        }
+        prev_mode_is_dialog = cur_mode_is_dialog;
+
         terminal.draw(|f| ui::render(f, &app, None))?;
 
         if let Ok(event) = event_rx.try_recv() {
@@ -525,6 +543,10 @@ async fn process_event(
                     app.slots = slot_manager.get_slots().await;
                 }
             }
+        }
+        AppEvent::AgentSpawned { slot_name } => {
+            let slots_dir = slot_manager.slots_directory().to_path_buf();
+            spawn_agent_stream_task(&slot_name, &slots_dir, event_tx);
         }
         AppEvent::TerminalOutput { slot_name, bytes } => {
             app.feed_terminal_bytes(&slot_name, &bytes);

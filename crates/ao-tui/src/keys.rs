@@ -957,6 +957,9 @@ fn handle_agent_dialog(
                     .await
                 {
                     Ok(()) => {
+                        let _ = tx.send(AppEvent::AgentSpawned {
+                            slot_name: name.clone(),
+                        });
                         let _ = tx.send(AppEvent::Info(format!("Agent spawned for {name}")));
                     }
                     Err(e) => {

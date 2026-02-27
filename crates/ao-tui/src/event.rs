@@ -31,6 +31,8 @@ pub enum AppEvent {
         failure: Option<(String, String)>,
         done: bool,
     },
+    /// An agent was successfully spawned — connect to its output stream.
+    AgentSpawned { slot_name: String },
     /// Terminal output bytes from an agent host connection.
     TerminalOutput { slot_name: String, bytes: Vec<u8> },
 }

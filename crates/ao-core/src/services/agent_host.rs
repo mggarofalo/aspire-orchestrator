@@ -101,7 +101,9 @@ pub async fn spawn(
         .await
         .map_err(|e| OrchestratorError::AgentHost(format!("create host dir: {e}")))?;
 
-    let mut cmd = tokio::process::Command::new(&exe);
+    // Use std::process::Command (not tokio) for detached spawning —
+    // tokio's async pipe setup conflicts with DETACHED_PROCESS on Windows.
+    let mut cmd = std::process::Command::new(&exe);
     cmd.arg("--host-agent")
         .arg("--slot")
         .arg(name)
@@ -124,8 +126,9 @@ pub async fn spawn(
 
     #[cfg(windows)]
     {
-        // CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
-        cmd.creation_flags(0x00000010 | 0x00000008);
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
+        cmd.creation_flags(0x08000000 | 0x00000200);
     }
 
     cmd.spawn()
