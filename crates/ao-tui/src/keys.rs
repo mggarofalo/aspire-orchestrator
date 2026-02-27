@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use tokio::sync::mpsc;
 
 use crate::app::{
@@ -22,6 +22,12 @@ pub async fn handle_key(
     slot_manager: &Arc<SlotManager>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
 ) {
+    // On Windows, crossterm sends both Press and Release events for every key.
+    // Only process Press and Repeat to avoid double-handling.
+    if key.kind == KeyEventKind::Release {
+        return;
+    }
+
     tracing::debug!(mode = ?app.mode, key = ?key.code, "handle_key");
     match &app.mode {
         Mode::SlotList => match app.view {

@@ -63,14 +63,11 @@ pub fn render(f: &mut Frame, app: &App) {
         chunks[0],
     );
 
-    // Source input
-    let source_text = format!(" {}", app.create_form.source);
+    // Source input — render text directly (no Block border, which would consume the row)
+    let source_display = format!(" {}", app.create_form.source);
+    let underline_style = source_style.add_modifier(Modifier::UNDERLINED);
     f.render_widget(
-        Paragraph::new(Span::styled(source_text, source_style)).block(
-            Block::default()
-                .borders(Borders::BOTTOM)
-                .border_style(source_style),
-        ),
+        Paragraph::new(Span::styled(source_display, underline_style)),
         chunks[1],
     );
 

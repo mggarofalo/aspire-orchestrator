@@ -10,7 +10,7 @@ expression: output
 "│               ┌ New Slot ────────────────────────────────────┐               │"
 "│               │                                              │               │"
 "│               │ Source Repository:                           │               │"
-"│               │ ──────────────────────────────────────────── │───────────────┘"
+"│               │  C:/Users/test/Source/aspire-orchestrator    │───────────────┘"
 "│               │                                              │───────────────┐"
 "│               │ Prompt (optional):                           │               │"
 "│               │                                              │               │"

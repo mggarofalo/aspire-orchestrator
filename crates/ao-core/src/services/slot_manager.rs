@@ -149,6 +149,16 @@ impl SlotManager {
             clone_path_str.clone(),
         );
 
+        // Clean up stale clone directory from a previous failed attempt
+        if clone_path.exists() {
+            tokio::fs::remove_dir_all(&clone_path).await.map_err(|e| {
+                OrchestratorError::Process(format!(
+                    "failed to remove stale directory {}: {e}",
+                    clone_path.display()
+                ))
+            })?;
+        }
+
         // Clone repo
         git::clone_repo(&source_label, &clone_path).await?;
 
